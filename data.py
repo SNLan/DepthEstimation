@@ -20,8 +20,8 @@ from tensorpack import RNGDataFlow, MapDataComponent, dftools
 # example_dir = '/home/wieschol/0default/Downloads/2011_09_26/2011_09_26_drive_0001_sync'
 example_dir = '/Users/apple/Downloads/Computergrafik/2011_09_26/2011_09_26_drive_0001_sync'
 # zip_dir = '/Users/apple/Downloads/Computergrafik/2011_09_26_drive_0001_sync.zip'
-zip_folder = '/Users/apple/Downloads/Computergrafik/zipfile'
-
+#zip_folder = '/Users/apple/Downloads/Computergrafik/zipfile'
+zip_folder = '/graphics/scratch/mallick/KITTI'
 class ImageEncode(MapDataComponent):
     def __init__(self, ds, mode='.jpg', dtype=np.uint8, index=0):
         def func(img):
@@ -131,7 +131,7 @@ def main():
     ds = ImageDecode(ds, index=0)
     ds = RejectTooSmallImages(ds, index=0)
     ds = CenterSquareResize(ds, index=0)
-    dftools.dump_dataflow_to_lmdb(ds, 'train.lmdb')
+    dftools.dump_dataflow_to_lmdb(ds, '/graphics/projects/scratch/student_datasets/cgpraktikum17/DepthEstimation/KITTI/train.lmdb')
 
     # read
     # ds = LMDBDataPoint('train.lmdb', shuffle=True)
