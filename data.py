@@ -12,13 +12,13 @@ import argparse
 import numpy as np
 import zipfile
 import random
-from tensorpack import RNGDataFlow, MapDataComponent, dftools
+from tensorpack import RNGDataFlow, MapDataComponent, dftools, FixedSizeData
 
 
 
 
 # example_dir = '/home/wieschol/0default/Downloads/2011_09_26/2011_09_26_drive_0001_sync'
-example_dir = '/Users/apple/Downloads/Computergrafik/2011_09_26/2011_09_26_drive_0001_sync'
+# example_dir = '/Users/apple/Downloads/Computergrafik/2011_09_26/2011_09_26_drive_0001_sync'
 # zip_dir = '/Users/apple/Downloads/Computergrafik/2011_09_26_drive_0001_sync.zip'
 #zip_folder = '/Users/apple/Downloads/Computergrafik/zipfile'
 zip_folder = '/graphics/scratch/mallick/KITTI'
@@ -38,20 +38,20 @@ class ImageDecode(MapDataComponent):
         super(ImageDecode, self).__init__(ds, func, index=index)
 
 
-class KittiReader(RNGDataFlow):
-    """docstring for KittiReader"""
-    def __init__(self, example_dir):
-        super(KittiReader, self).__init__()
-        self.pattern = os.path.join(example_dir, 'image_02', 'data', '*.png')
+# class KittiReader(RNGDataFlow):
+#     """docstring for KittiReader"""
+#     def __init__(self, example_dir):
+#         super(KittiReader, self).__init__()
+#         self.pattern = os.path.join(example_dir, 'image_02', 'data', '*.png')
 
-    def get_data(self):
+#     def get_data(self):
 
-        image_names = glob.glob(self.pattern)
+#         image_names = glob.glob(self.pattern)
 
-        for fn in image_names:
-            left_img = cv2.imread(fn)
-            right_img = cv2.imread(fn.replace('image_02', 'image_03'))
-            yield [left_img, right_img]
+#         for fn in image_names:
+#             left_img = cv2.imread(fn)
+#             right_img = cv2.imread(fn.replace('image_02', 'image_03'))
+#             yield [left_img, right_img]
 
 class KittiFromZIPFile(RNGDataFlow):
     """ Produce images read from a list of zip files. """
@@ -86,55 +86,20 @@ class KittiFromZIPFile(RNGDataFlow):
                 left_img = archive[0].read(archive[1])
                 right_img = archive[0].read(archive[1].replace('image_02', 'image_03'))
 
-                yield [left_img,right_img]
+                yield [left_img, right_img]
 
             # im_data = archive[0].read(archive[1])
             # yield [left_imData,right_imData]
-
-class RejectTooSmallImages(MapDataComponent):
-    def __init__(self, ds, thresh=384, index=0):
-        def func(img):
-            h, w, _ = img.shape
-            if (h < thresh) or (w < thresh):
-                return None
-            else:
-                return img
-        super(RejectTooSmallImages, self).__init__(ds, func, index=index)
-
-
-class CenterSquareResize(MapDataComponent):
-    def __init__(self, ds, index=0):
-        """See section 5.3
-        """
-        def func(img):
-            try:
-                h, w, _ = img.shape
-                if h > w:
-                    off = (h - w) // 2
-                    if off > 0:
-                        img = img[off:-off, :, :]
-                if w > h:
-                    off = (w - h) // 2
-                    if off > 0:
-                        img = img[:, off:-off, :]
-
-                img = cv2.resize(img, (256, 256))
-                return img
-            except Exception:
-                return None
-        super(CenterSquareResize, self).__init__(ds, func, index=index)
 
 
 def main():
     # create
     ds = KittiFromZIPFile(zip_folder)
-    ds = ImageDecode(ds, index=0)
-    ds = RejectTooSmallImages(ds, index=0)
-    ds = CenterSquareResize(ds, index=0)
-    dftools.dump_dataflow_to_lmdb(ds, '/graphics/projects/scratch/student_datasets/cgpraktikum17/DepthEstimation/KITTI/train.lmdb')
+    ds = FixedSizeData(ds, 500)
+    dftools.dump_dataflow_to_lmdb(ds, '/graphics/projects/scratch/student_datasets/cgpraktikum17/DepthEstimation/KITTI/train1.lmdb')
 
     # read
-    # ds = LMDBDataPoint('train.lmdb', shuffle=True)
+    # ds = LMDBDataPoint('train2.lmdb', shuffle=True)
     # TestDataSpeed(ds).start()
 
 
