@@ -96,7 +96,7 @@ def main():
     # create
     ds = KittiFromZIPFile(zip_folder)
     ds = FixedSizeData(ds, 500)
-    dftools.dump_dataflow_to_lmdb(ds, '/graphics/projects/scratch/student_datasets/cgpraktikum17/DepthEstimation/KITTI/train1.lmdb')
+    dftools.dump_dataflow_to_lmdb(ds, 'train2.lmdb')
 
     # read
     # ds = LMDBDataPoint('train2.lmdb', shuffle=True)
