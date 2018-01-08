@@ -10,7 +10,7 @@ import numpy as np
 import cv2
 from tensorpack import *
 import tensorflow.contrib.slim as slim
-
+from bilinear_sampler import *
 
 """
 This is a boiler-plate template.
@@ -23,10 +23,10 @@ All code is in this file is the most minimalistic way to solve a deep-learning p
 # WIDTH = 375
 # CHANNELS = 3
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 # SHAPE = 28
 HEIGHT = 1280
-WIDTH = 384
+WIDTH = 512
 CHANNELS = 3
 
 
@@ -39,87 +39,6 @@ class ImageDecode(MapDataComponent):
 
 
 class Model(ModelDesc):
-
-    def bilinear_sampler_1d_h(self, input_images, x_offset, wrap_mode='border', name='bilinear_sampler', **kwargs):
-        def _repeat(x, n_repeats):
-             rep = tf.tile(tf.expand_dims(x, 1), [1, n_repeats])
-             return tf.reshape(rep, [-1])
-
-        def _interpolate(im, x, y):
-            # handle both texture border types
-            _edge_size = 0
-            if _wrap_mode == 'border':
-                _edge_size = 1
-                im = tf.pad(im, [[0, 0], [1, 1], [1, 1], [0, 0]], mode='CONSTANT')
-                x = x + _edge_size
-                y = y + _edge_size
-            elif _wrap_mode == 'edge':
-                _edge_size = 0
-            else:
-                return None
-
-            x = tf.clip_by_value(x, 0.0, _width_f - 1 + 2 * _edge_size)
-
-            x0_f = tf.floor(x)
-            y0_f = tf.floor(y)
-            x1_f = x0_f + 1
-
-            x0 = tf.cast(x0_f, tf.int32)
-            y0 = tf.cast(y0_f, tf.int32)
-            x1 = tf.cast(tf.minimum(x1_f, _width_f - 1 + 2 * _edge_size), tf.int32)
-
-            dim2 = (_width + 2 * _edge_size)
-            dim1 = (_width + 2 * _edge_size) * (_height + 2 * _edge_size)
-            base = _repeat(tf.range(_num_batch) * dim1, _height * _width)
-            base_y0 = base + y0 * dim2
-            idx_l = base_y0 + x0
-            idx_r = base_y0 + x1
-
-            im_flat = tf.reshape(im, tf.stack([-1, _num_channels]))
-
-            pix_l = tf.gather(im_flat, idx_l)
-            pix_r = tf.gather(im_flat, idx_r)
-
-            weight_l = tf.expand_dims(x1_f - x, 1)
-            weight_r = tf.expand_dims(x - x0_f, 1)
-
-            return weight_l * pix_l + weight_r * pix_r
-
-        def _transform(input_images, x_offset):
-
-            # grid of (x_t, y_t, 1), eq (1) in ref [1]
-            x_t, y_t = tf.meshgrid(tf.linspace(0.0, _width_f - 1.0, _width),
-                                   tf.linspace(0.0, _height_f - 1.0, _height))
-
-            x_t_flat = tf.reshape(x_t, (1, -1))
-            y_t_flat = tf.reshape(y_t, (1, -1))
-
-            x_t_flat = tf.tile(x_t_flat, tf.stack([_num_batch, 1]))
-            y_t_flat = tf.tile(y_t_flat, tf.stack([_num_batch, 1]))
-
-            x_t_flat = tf.reshape(x_t_flat, [-1])
-            y_t_flat = tf.reshape(y_t_flat, [-1])
-
-            x_t_flat = x_t_flat + tf.reshape(x_offset, [-1]) * _width_f
-
-            input_transformed = _interpolate(input_images, x_t_flat, y_t_flat)
-
-            output = tf.reshape(
-                input_transformed, tf.stack([_num_batch, _height, _width, _num_channels]))
-            return output
-
-        _num_batch = tf.shape(input_images)[0]
-        _height = tf.shape(input_images)[1]
-        _width = tf.shape(input_images)[2]
-        _num_channels = tf.shape(input_images)[3]
-
-        _height_f = tf.cast(_height, tf.float32)
-        _width_f = tf.cast(_width, tf.float32)
-
-        _wrap_mode = wrap_mode
-
-        output = _transform(input_images, x_offset)
-        return output
 
     def gradient_x(self, img):
         gx = img[:, :, :-1, :] - img[:, :, 1:, :]
@@ -148,12 +67,12 @@ class Model(ModelDesc):
         return scaled_imgs
 
     def generate_image_left(self, img, disp):
-        input_img = img
-        return self.bilinear_sampler_1d_h(input_img, -disp)
+        # input_img = img
+        return bilinear_sampler_1d_h(img, -disp)
 
     def generate_image_right(self, img, disp):
-        input_img = img
-        return self.bilinear_sampler_1d_h(input_img, disp)
+        # input_img = img
+        return bilinear_sampler_1d_h(img, disp)
 
     def SSIM(self, x, y):
         C1 = 0.01 ** 2
@@ -242,9 +161,9 @@ class Model(ModelDesc):
     def _build_graph(self, inputs):
         # left is image [HEIGHT, WIDTH, 3] with range [0, 255]
         left, right = inputs
-        # left is image [HEIGHT, WIDTH, 3] with range [-1, 1]
-        left = left / 128 - 1
-        right = right / 128 - 1
+        # # left is image [HEIGHT, WIDTH, 3] with range [-1, 1]
+        # left = left / 128 - 1
+        # right = right / 128 - 1
 
         # START HERE
         # put the network
@@ -269,45 +188,46 @@ class Model(ModelDesc):
             skip6 = conv6
 
 
+            upconv = self.upconv
+            conv = self.conv
             # with tf.variable_scope('decoder'):
-            upconv7 = self.upconv(conv7, 512, 3, 2)  # H/64
+            upconv7 = upconv(conv7, 512, 3, 2)  # H/64
             concat7 = tf.concat([upconv7, skip6], 3)
-            iconv7 = self.conv(concat7, 512, 3, 1)
-            iconv7 = self.conv(conv7,512,3,1)
+            iconv7 = conv(concat7, 512, 3, 1)
 
-            upconv6 = self.upconv(iconv7, 512, 3, 2)  # H/32
+            upconv6 = upconv(iconv7, 512, 3, 2)  # H/32
             concat6 = tf.concat([upconv6, skip5], 3)
-            iconv6 = self.conv(concat6, 512, 3, 1)
+            iconv6 = conv(concat6, 512, 3, 1)
 
-            upconv5 = self.upconv(iconv6, 256, 3, 2)  # H/16
+            upconv5 = upconv(iconv6, 256, 3, 2)  # H/16
             concat5 = tf.concat([upconv5, skip4], 3)
-            iconv5 = self.conv(concat5, 256, 3, 1)
+            iconv5 = conv(concat5, 256, 3, 1)
 
-            upconv4 = self.upconv(iconv5, 128, 3, 2)  # H/8
+            upconv4 = upconv(iconv5, 128, 3, 2)  # H/8
             concat4 = tf.concat([upconv4, skip3], 3)
-            iconv4 = self.conv(concat4, 128, 3, 1)
-            disp4 = self.get_disp(iconv4)
-            udisp4 = self.upsample_nn(disp4, 2)
+            iconv4 = conv(concat4, 128, 3, 1)
+            self.disp4 = self.get_disp(iconv4)
+            udisp4 = self.upsample_nn(self.disp4, 2)
 
-            upconv3 = self.upconv(iconv4, 64, 3, 2)  # H/4
+            upconv3 = upconv(iconv4, 64, 3, 2)  # H/4
             concat3 = tf.concat([upconv3, skip2, udisp4], 3)
-            iconv3 = self.conv(concat3, 64, 3, 1)
-            disp3 = self.get_disp(iconv3)
-            udisp3 = self.upsample_nn(disp3, 2)
+            iconv3 = conv(concat3, 64, 3, 1)
+            self.disp3 = self.get_disp(iconv3)
+            udisp3 = self.upsample_nn(self.disp3, 2)
 
-            upconv2 = self.upconv(iconv3, 32, 3, 2)  # H/2
+            upconv2 = upconv(iconv3, 32, 3, 2)  # H/2
             concat2 = tf.concat([upconv2, skip1, udisp3], 3)
-            iconv2 = self.conv(concat2, 32, 3, 1)
-            disp2 = self.get_disp(iconv2)
-            udisp2 = self.upsample_nn(disp2, 2)
+            iconv2 = conv(concat2, 32, 3, 1)
+            self.disp2 = self.get_disp(iconv2)
+            udisp2 = self.upsample_nn(self.disp2, 2)
 
-            upconv1 = self.upconv(iconv2, 16, 3, 2)  # H
+            upconv1 = upconv(iconv2, 16, 3, 2)  # H
             concat1 = tf.concat([upconv1, udisp2], 3)
-            iconv1 = self.conv(concat1, 16, 3, 1)
-            disp1 = self.get_disp(iconv1)
+            iconv1 = conv(concat1, 16, 3, 1)
+            self.disp1 = self.get_disp(iconv1)
 
-            return [disp1, disp2, disp3, disp4]
-
+            return [self.disp1, self.disp2, self.disp3, self.disp4]
+#
         def some_func(y):
             x = Conv2D('conv1', y, 32, kernel_shape=3, nl=tf.nn.relu)
             x = Conv2D('conv2', x, 32, kernel_shape=3, nl=tf.nn.relu)
@@ -410,7 +330,9 @@ class Model(ModelDesc):
 
 
 def get_data():
-    ds = LMDBDataPoint('train2.lmdb', shuffle=True)
+    # ds = LMDBDataPoint('train2.lmdb', shuffle=True)
+    ds = LMDBDataPoint('/graphics/projects/scratch/student_datasets/cgpraktikum17/DepthEstimation/KITTI/train.lmdb',
+                       shuffle=True)
     ds = ImageDecode(ds, index=0)
     ds = ImageDecode(ds, index=1)
 
@@ -459,3 +381,7 @@ if __name__ == '__main__':
         config.session_init = SaverRestore(args.load)
 
     launch_train_with_config(config, SimpleTrainer())
+
+
+    #
+    #
